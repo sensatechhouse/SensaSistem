@@ -1,6 +1,5 @@
 import sqlite3
-import bcrypt
-from datetime import datetime, date
+from datetime import datetime
 
 class DatabaseInitializer:
     def __init__(self, db_name='cs_tournaments.db'):
@@ -27,43 +26,23 @@ class DatabaseInitializer:
             cursor.execute("""
                 SELECT name FROM sqlite_master 
                 WHERE type='table' AND name IN (
-                    'administrators', 'players', 'teams', 'player_team', 
+                    'players', 'teams', 'player_team', 
                     'tournaments', 'tournament_teams', 'matches'
                 )
             """)
             tables = cursor.fetchall()
             
             # Se não encontrar todas as tabelas, considera vazio
-            if len(tables) < 7:
-                return True
-                
-            # Verificar se há dados nas tabelas principais
-            cursor.execute("SELECT COUNT(*) FROM administrators")
-            admin_count = cursor.fetchone()[0]
-            
-            return admin_count == 0
+            return len(tables) < 6
             
         except sqlite3.Error as e:
             print(f"Erro ao verificar se o banco está vazio: {e}")
             return True
     
     def create_tables(self):
-        """Cria todas as tabelas necessárias"""
+        """Cria todas as tabelas necessárias (sem administradores)"""
         try:
             cursor = self.conn.cursor()
-            
-            # Tabela de Administradores
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS administrators (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username VARCHAR(50) UNIQUE NOT NULL,
-                    email VARCHAR(100) UNIQUE NOT NULL,
-                    password_hash VARCHAR(255) NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    last_login DATETIME,
-                    is_active BOOLEAN DEFAULT TRUE
-                )
-            ''')
             
             # Tabela de Jogadores
             cursor.execute('''
@@ -73,8 +52,7 @@ class DatabaseInitializer:
                     steam_id VARCHAR(20) UNIQUE,
                     email VARCHAR(100),
                     country VARCHAR(50),
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    created_by INTEGER REFERENCES administrators(id)
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
             
@@ -86,8 +64,7 @@ class DatabaseInitializer:
                     tag VARCHAR(10) UNIQUE NOT NULL,
                     country VARCHAR(50),
                     founded_date DATE,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    created_by INTEGER REFERENCES administrators(id)
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
             
@@ -116,8 +93,7 @@ class DatabaseInitializer:
                     location VARCHAR(100),
                     game_version VARCHAR(50),
                     status VARCHAR(20) DEFAULT 'PLANNED',
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    created_by INTEGER REFERENCES administrators(id)
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
             
@@ -169,115 +145,12 @@ class DatabaseInitializer:
             print(f"Erro ao criar tabelas: {e}")
             return False
     
-    def hash_password(self, password):
-        """Gera hash da senha usando bcrypt"""
-        salt = bcrypt.gensalt()
-        hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
-        return hashed.decode('utf-8')
-    
-    def insert_sample_data(self):
-        """Insere dados de exemplo no banco"""
-        try:
-            cursor = self.conn.cursor()
-            
-            # Inserir administradores
-            admin_passwords = {
-                'admin': self.hash_password('admin123'),
-                'manager': self.hash_password('manager123')
-            }
-            
-            cursor.executemany('''
-                INSERT INTO administrators (username, email, password_hash)
-                VALUES (?, ?, ?)
-            ''', [
-                ('admin', 'admin@cs-tournaments.com', admin_passwords['admin']),
-                ('manager', 'manager@cs-tournaments.com', admin_passwords['manager'])
-            ])
-            
-            # Inserir jogadores
-            cursor.executemany('''
-                INSERT INTO players (nickname, steam_id, email, country, created_by)
-                VALUES (?, ?, ?, ?, ?)
-            ''', [
-                ('coldzera', 'STEAM_1:1:123456', 'coldzera@email.com', 'Brazil', 1),
-                ('s1mple', 'STEAM_1:1:654321', 's1mple@email.com', 'Ukraine', 1),
-                ('device', 'STEAM_1:1:789012', 'device@email.com', 'Denmark', 1),
-                ('ZywOo', 'STEAM_1:1:345678', 'zywoo@email.com', 'France', 1),
-                ('NiKo', 'STEAM_1:1:901234', 'niko@email.com', 'Bosnia', 2)
-            ])
-            
-            # Inserir equipes
-            cursor.executemany('''
-                INSERT INTO teams (name, tag, country, founded_date, created_by)
-                VALUES (?, ?, ?, ?, ?)
-            ''', [
-                ('Natus Vincere', 'NaVi', 'Ukraine', '2009-12-17', 1),
-                ('FaZe Clan', 'FaZe', 'International', '2010-05-30', 1),
-                ('Team Vitality', 'VIT', 'France', '2013-08-27', 2),
-                ('Astralis', 'AST', 'Denmark', '2016-01-18', 2)
-            ])
-            
-            # Inserir relações jogador-equipe
-            cursor.executemany('''
-                INSERT INTO player_team (player_id, team_id, join_date)
-                VALUES (?, ?, ?)
-            ''', [
-                (2, 1, '2020-01-01'),  # s1mple in NaVi
-                (3, 4, '2021-01-01'),  # device in Astralis
-                (4, 3, '2020-06-01'),  # ZywOo in Vitality
-                (5, 2, '2022-01-01')   # NiKo in FaZe
-            ])
-            
-            # Inserir campeonatos
-            cursor.executemany('''
-                INSERT INTO tournaments (name, description, start_date, end_date, 
-                                       prize_pool, location, game_version, status, created_by)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', [
-                ('ESL Pro League Season 16', 'Major CS:GO tournament in Malta', 
-                 '2023-08-30', '2023-10-02', 1000000.00, 'Malta', 'CS:GO', 'COMPLETED', 1),
-                ('IEM Katowice 2023', 'One of the most prestigious CS:GO tournaments', 
-                 '2023-02-01', '2023-02-12', 1000000.00, 'Katowice, Poland', 'CS:GO', 'COMPLETED', 1),
-                ('BLAST Premier World Final 2023', 'World Final championship', 
-                 '2023-12-13', '2023-12-17', 1000000.00, 'Abu Dhabi', 'CS:GO', 'PLANNED', 2)
-            ])
-            
-            # Inserir times nos campeonatos
-            cursor.executemany('''
-                INSERT INTO tournament_teams (tournament_id, team_id, seed, group_name)
-                VALUES (?, ?, ?, ?)
-            ''', [
-                (1, 1, 1, 'A'), (1, 2, 2, 'A'), (1, 3, 1, 'B'), (1, 4, 2, 'B'),
-                (2, 1, 1, 'A'), (2, 2, 2, 'B'), (3, 1, 1, 'A'), (3, 3, 2, 'A')
-            ])
-            
-            # Inserir partidas
-            cursor.executemany('''
-                INSERT INTO matches (tournament_id, team1_id, team2_id, match_date, 
-                                   map, score_team1, score_team2, winner_id, status, round)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', [
-                (1, 1, 2, '2023-09-01 15:00:00', 'Mirage', 16, 12, 1, 'COMPLETED', 'Group Stage'),
-                (1, 3, 4, '2023-09-01 18:00:00', 'Inferno', 10, 16, 4, 'COMPLETED', 'Group Stage'),
-                (1, 1, 4, '2023-09-02 15:00:00', 'Nuke', 16, 14, 1, 'COMPLETED', 'Semi-final'),
-                (2, 1, 2, '2023-02-05 16:00:00', 'Ancient', 19, 17, 1, 'COMPLETED', 'Grand Final')
-            ])
-            
-            self.conn.commit()
-            print("Dados de exemplo inseridos com sucesso!")
-            return True
-            
-        except sqlite3.Error as e:
-            print(f"Erro ao inserir dados de exemplo: {e}")
-            self.conn.rollback()
-            return False
-    
     def show_table_counts(self):
         """Mostra a quantidade de registros em cada tabela"""
         try:
             cursor = self.conn.cursor()
             tables = [
-                'administrators', 'players', 'teams', 'player_team',
+                'players', 'teams', 'player_team',
                 'tournaments', 'tournament_teams', 'matches'
             ]
             
@@ -297,7 +170,7 @@ class DatabaseInitializer:
         
         if self.is_database_empty():
             print("Banco de dados vazio. Iniciando inicialização...")
-            if self.create_tables() and self.insert_sample_data():
+            if self.create_tables():
                 print("Banco de dados inicializado com sucesso!")
                 self.show_table_counts()
                 return True
@@ -328,9 +201,8 @@ def main():
     
     if success:
         print("\n✅ Sistema pronto para uso!")
-        print("Credenciais de acesso:")
-        print("Usuário: admin | Senha: admin123")
-        print("Usuário: manager | Senha: manager123")
+        print("✅ Todas as tabelas foram criadas com sucesso!")
+        print("✅ Banco de dados vazio, aguardando inserção de dados.")
     else:
         print("\n❌ Falha na inicialização do sistema!")
 
