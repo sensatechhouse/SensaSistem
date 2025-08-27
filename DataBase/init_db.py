@@ -3,7 +3,7 @@ from datetime import datetime
 
 class DatabaseInitializer:
     def __init__(self, db_name='cs_tournaments.db'):
-        self.db_name = db_name
+        self.db_name = fr'DataBase/bases/{db_name}'
         self.conn = None
         
     def connect(self):
